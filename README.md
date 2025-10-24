@@ -1,8 +1,8 @@
 # 🚀 Migration Fibery → Supabase/PostgreSQL
 
-**Outil de migration complet** pour exporter vos données Fibery vers PostgreSQL/Supabase avec préservation automatique des relations, types de données et structures.
+**Outil de migration simple** pour transformer vos exports CSV Fibery en SQL PostgreSQL/Supabase avec préservation automatique des relations, types de données et structures.
 
-> **🎯 Cas d'usage parfait :** Vous avez regroupé plusieurs bases de données Fibery dans un seul workspace avant l'export CSV !
+> **🎯 Cas d'usage parfait :** Vous avez déjà exporté vos bases de données Fibery en CSV et voulez les importer dans Supabase !
 
 ---
 
@@ -58,68 +58,58 @@
 ## 🎯 Prérequis
 
 ### 📋 **Avant de commencer**
-- ✅ **Fibery workspace** avec vos données
-- ✅ **Supabase projet** créé (ou PostgreSQL accessible)
-- ✅ **Node.js** 16+ installé
-- ✅ **Export CSV** de vos bases Fibery
+- ✅ **Exports CSV Fibery** (déjà téléchargés depuis Fibery)
+- ✅ **Projet Supabase** créé (pour copier-coller le SQL)
+- ✅ **Node.js** 16+ installé sur votre machine
 
-### 🔑 **Clés API Fibery**
-- Compte Fibery avec accès API
-- Token API généré dans les paramètres
-
-### 🗄️ **Accès base de données**
-- **Service Role Key** Supabase (accès complet)
-- **URL de connexion** PostgreSQL
-
----
-
-## 📦 Installation
-
-```bash
-# 1. Cloner ou télécharger le projet
-cd migration-fibery-supabase
-
-# 2. Installer les dépendances
-npm install
-
-# 3. Configurer (optionnel)
-cp .env.example .env
-# Éditer .env avec vos vraies valeurs
+### 📁 **Structure des fichiers attendue**
 ```
-
----
-
-## ⚡ Démarrage rapide
-
-### **Étape 1 : Export Fibery**
-1. Dans Fibery, exportez vos bases en CSV :
-   - Menu → Export → CSV (Excel format)
-   - Choisissez le dossier "Important"
-   - Téléchargez l'archive ZIP
-
-2. Extrayez et placez dans un dossier accessible :
-```
-Important/
+Important/                          # Dossier de votre export Fibery
 ├── Actionalisation-Dopa/
-│   └── Actionalisation-Dopa.csv
+│   └── Actionalisation-Dopa.csv    # Un CSV par base de données
 ├── PSM-Centres d'intérêt/
 │   └── PSM-Centres d'intérêt.csv
 └── Bibliotheque-Auteurs/
     └── Bibliotheque-Auteurs.csv
 ```
 
-### **Étape 2 : Configuration**
-Modifiez les chemins dans les scripts :
+### 🗄️ **Accès Supabase**
+- **SQL Editor** dans votre projet Supabase (pour copier-coller)
+- **Service Role Key** uniquement si vous voulez automatiser plus tard
+
+---
+
+## 📦 Installation
+
+```bash
+# 1. Cloner le projet
+git clone https://github.com/gryynn/migration_fibery.git
+cd migration_fibery
+
+# 2. Installer les dépendances
+npm install
+
+# 3. Configurer les chemins (dans le code)
+# Éditer csv-to-sql-migrator.js et create-relations.js
+# Modifier la ligne : importantDir avec votre chemin vers le dossier Important
+```
+
+---
+
+## ⚡ Démarrage rapide
+
+### **Étape 1 : Configuration**
+Modifiez le chemin dans les scripts :
 ```javascript
 // Dans csv-to-sql-migrator.js et create-relations.js
 const CONFIG = {
-  importantDir: 'VOTRE_CHEMIN_VERS/Important',
+  importantDir: 'C:\\Users\\martin\\Downloads\\mon-export\\Important',  // ← Votre chemin
   schema: 'psm_root',  // Nom du schéma PostgreSQL
-  // ...
+  batchSize: 100       // Lignes par INSERT (ajustez selon vos données)
 };
 ```
 
-### **Étape 3 : Migration**
+### **Étape 2 : Migration**
 ```bash
 # 1. Générer le SQL des tables
 node csv-to-sql-migrator.js
@@ -128,10 +118,14 @@ node csv-to-sql-migrator.js
 node create-relations.js
 ```
 
-### **Étape 4 : Exécution dans Supabase**
-1. Ouvrez **Supabase SQL Editor**
-2. Exécutez `migration-complete.sql`
-3. Exécutez `relations-complete.sql`
+### **Étape 3 : Import dans Supabase**
+1. Ouvrez **Supabase SQL Editor** dans votre projet
+2. Copiez-collez le contenu de `migration-complete.sql`
+3. Cliquez **"Run"** pour créer les tables
+4. Copiez-collez le contenu de `relations-complete.sql`
+5. Cliquez **"Run"** pour créer les relations
+
+**🎉 Vos données Fibery sont maintenant dans Supabase !**
 
 ---
 
@@ -145,21 +139,20 @@ node create-relations.js
 | `schema` | Nom du schéma PostgreSQL | `psm_root` |
 | `batchSize` | Lignes par INSERT | `100` (sûr) à `1000` (rapide) |
 
-### **Options avancées**
+### **Configuration simple**
+
+Modifiez seulement ces lignes dans les deux scripts :
 
 ```javascript
+// csv-to-sql-migrator.js et create-relations.js
 const CONFIG = {
-  // Options de performance
-  batchSize: 500,        // INSERT par paquets
-  dropExistingTables: true,  // Supprimer avant recréer
-
-  // Options de détection
-  detection: {
-    sampleSize: 20,      // Échantillon pour analyser types
-    minCommaRatio: 0.1,  // Seuil détection relations
-  }
+  importantDir: 'C:\\Users\\martin\\Downloads\\mon-export\\Important',  // ← CHANGEZ CE CHEMIN
+  schema: 'psm_root',  // ← CHANGEZ si vous voulez un autre nom de schéma
+  batchSize: 100      // ← AJUSTEZ selon la taille de vos données
 };
 ```
+
+**💡 Pas de fichier .env, pas de clés API, juste modifier le chemin !**
 
 ---
 
@@ -397,16 +390,10 @@ retryDelay: 2000
 
 ### **Bonnes pratiques**
 
-- ✅ **Service Role Key** uniquement (pas la clé publique)
-- ✅ **Projet Supabase dédié** pour la migration
-- ✅ **Backup** avant migration production
-- ✅ **Variables d'environnement** (pas de commit)
-
-### **Données sensibles**
-
-- 🔐 Clés API non stockées dans le code
-- 🔐 URLs de base non hardcodées
-- 🔐 Données locales uniquement
+- ✅ **Backup de vos CSV** avant de commencer
+- ✅ **Projet Supabase de test** pour valider d'abord
+- ✅ **Petits tests** avant la migration complète
+- ✅ **Vérification** des résultats dans Supabase après import
 
 ---
 
