@@ -1,0 +1,62 @@
+{
+  "name": "fibery-to-supabase-migration",
+  "version": "2.0.0",
+  "description": "Migration tool from Fibery to Supabase/PostgreSQL with automatic relation detection",
+  "main": "csv-to-sql-migrator.js",
+  "scripts": {
+    "start": "node csv-to-sql-migrator.js",
+    "migrate": "node csv-to-sql-migrator.js && node create-relations.js",
+    "migrate:tables": "node csv-to-sql-migrator.js",
+    "migrate:relations": "node create-relations.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "echo \"No linter configured\" && exit 0"
+  },
+  "keywords": [
+    "fibery",
+    "supabase",
+    "postgresql",
+    "migration",
+    "csv",
+    "sql",
+    "database",
+    "export",
+    "import",
+    "many-to-many",
+    "relations"
+  ],
+  "author": "Martin Green",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gryynn/migration_fibery.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gryynn/migration_fibery/issues"
+  },
+  "homepage": "https://github.com/gryynn/migration_fibery#readme",
+  "dependencies": {
+    "fs": "^0.0.1-security",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {},
+  "files": [
+    "csv-to-sql-migrator.js",
+    "create-relations.js",
+    "README.md",
+    ".env.example"
+  ],
+  "bin": {
+    "fibery-migrate": "./csv-to-sql-migrator.js",
+    "fibery-relations": "./create-relations.js"
+  },
+  "preferGlobal": false,
+  "private": false,
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ]
+}

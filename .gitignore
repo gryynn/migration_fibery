@@ -1,0 +1,47 @@
+# ========================================================================
+# MIGRATION FIBERY - Fichiers à ignorer
+# ========================================================================
+
+# Fichiers de configuration sensibles
+.env
+config.js
+.env.local
+.env.production
+.env.development
+
+# Fichiers générés (ne pas commiter)
+migration-complete.sql
+relations-complete.sql
+example-output.sql
+output/
+*.log
+
+# Fichiers temporaires
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Backup
+*.backup
+*.bak
+
+# Tests
+test/
+coverage/
+
+# Documentation temporaire
+docs-temp/
+temp/
