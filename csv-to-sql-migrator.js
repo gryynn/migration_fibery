@@ -48,6 +48,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // ============================================
 // CONFIGURATION - À MODIFIER SELON VOS BESOINS
@@ -244,16 +245,24 @@ function guessPostgresType(value) {
 }
 
 /**
- * 🛡️ ÉCHAPPÉMENT DES VALEURS POUR SQL
- * ====================================
- * Convertit une valeur JavaScript en format SQL sûr
+ * 🛡️ ÉCHAPPÉMENT DES VALEURS POUR SQL - VERSION AMÉLIORÉE
+ * =======================================================
+ * Convertit une valeur JavaScript en format SQL sûr avec gestion complète
+ * des caractères spéciaux PostgreSQL
  *
  * RÈGLES D'ÉCHAPPÉMENT :
  * ====================
  * - NULL/undefined/vide → NULL SQL
  * - BOOLEAN → TRUE/FALSE SQL (converti depuis plusieurs formats)
  * - Nombres → valeur numérique directe (validation NaN)
- * - Textes → entre apostrophes, avec échappement des apostrophes
+ * - Textes → entre apostrophes avec échappement complet des caractères spéciaux
+ *
+ * ÉCHAPPEMENTS APPLIQUÉS :
+ * - Apostrophes : ' → '' (doubler les apostrophes)
+ * - Backslashes : \ → \\ (échapper les backslashes)
+ * - Retours à la ligne : \n → \\n, \r → \\r
+ * - Guillemets doubles : " → " (PAS d'échappement, PostgreSQL utilise ')
+ * - Caractères Unicode : préservés (émojis, accents)
  *
  * @param {any} value - Valeur à échapper
  * @param {string} type - Type PostgreSQL de la colonne
@@ -281,15 +290,155 @@ function escapeSQLValue(value, type) {
     return isNaN(num) ? 'NULL' : String(num);
   }
 
-  // Cas 4: Textes, UUIDs, dates (tous entre apostrophes)
+  // Cas 4: Textes, UUIDs, dates (tous entre apostrophes avec échappement complet)
   if (type === 'UUID' || type === 'DATE' || type === 'TIMESTAMPTZ' || type === 'TEXT') {
-    // Échapper les apostrophes : ' → ''
-    const escaped = str.replace(/'/g, "''");
+    // Échappement complet des caractères spéciaux PostgreSQL
+    const escaped = str
+      .replace(/\\/g, '\\\\')  // Backslashes : \ → \\
+      .replace(/'/g, "''")     // Apostrophes : ' → ''
+      .replace(/\n/g, '\\n')   // Retours à la ligne : \n → \\n
+      .replace(/\r/g, '\\r')   // Retours chariot : \r → \\r
+      .replace(/\t/g, '\\t');  // Tabulations : \t → \\t
+    
     return `'${escaped}'`;
   }
 
   // Cas 5: Type non géré (fallback)
   return 'NULL';
+}
+
+/**
+ * 🧪 TEST DE LA FONCTION escapeSQLValue
+ * =====================================
+ * Fonction de test pour vérifier que l'échappement fonctionne correctement
+ */
+function testEscapeSQLValue() {
+  console.log('🧪 Test de escapeSQLValue()...\n');
+  
+  const testCases = [
+    // Tests basiques
+    { input: 'Hello', expected: "'Hello'", description: 'Texte simple' },
+    { input: '', expected: 'NULL', description: 'Chaîne vide' },
+    { input: null, expected: 'NULL', description: 'Valeur null' },
+    
+    // Tests apostrophes
+    { input: "C'est", expected: "'C''est'", description: 'Apostrophe simple' },
+    { input: "C'est \"cool\"", expected: "'C''est \"cool\"'", description: 'Apostrophe + guillemets' },
+    { input: "L'important c'est", expected: "'L''important c''est'", description: 'Multiples apostrophes' },
+    
+    // Tests guillemets (ne doivent PAS être échappés)
+    { input: 'He said "Hi"', expected: "'He said \"Hi\"'", description: 'Guillemets simples' },
+    { input: 'He said "Hi" and "Bye"', expected: "'He said \"Hi\" and \"Bye\"'", description: 'Multiples guillemets' },
+    
+    // Tests backslashes
+    { input: 'path\\to\\file', expected: "'path\\\\to\\\\file'", description: 'Backslashes' },
+    { input: 'C:\\Users\\Name', expected: "'C:\\\\Users\\\\Name'", description: 'Chemin Windows' },
+    
+    // Tests retours à la ligne
+    { input: 'Line1\nLine2', expected: "'Line1\\nLine2'", description: 'Retour à la ligne Unix' },
+    { input: 'Line1\r\nLine2', expected: "'Line1\\r\\nLine2'", description: 'Retour à la ligne Windows' },
+    { input: 'Line1\rLine2', expected: "'Line1\\rLine2'", description: 'Retour chariot' },
+    
+    // Tests tabulations
+    { input: 'Col1\tCol2', expected: "'Col1\\tCol2'", description: 'Tabulation' },
+    
+    // Tests mixtes (cas réels de PSM-PERMAV)
+    { input: "C'est pouvoir passer du TEMPS", expected: "'C''est pouvoir passer du TEMPS'", description: 'Cas PSM-PERMAV 1' },
+    { input: 'Tu as un comportement "éponge" avec Jeanne', expected: "'Tu as un comportement \"éponge\" avec Jeanne'", description: 'Cas PSM-PERMAV 2' },
+    { input: 'Ecrire une histoire inspirante et cool "Solal Punk"', expected: "'Ecrire une histoire inspirante et cool \"Solal Punk\"'", description: 'Cas PSM-PERMAV 3' },
+    
+    // Tests caractères Unicode
+    { input: 'Café ☕ émoji', expected: "'Café ☕ émoji'", description: 'Caractères Unicode' },
+    { input: 'Français: àéèùç', expected: "'Français: àéèùç'", description: 'Accents français' },
+    
+    // Tests booléens
+    { input: 'true', type: 'BOOLEAN', expected: 'TRUE', description: 'Booléen true' },
+    { input: 'false', type: 'BOOLEAN', expected: 'FALSE', description: 'Booléen false' },
+    { input: '1', type: 'BOOLEAN', expected: 'TRUE', description: 'Booléen 1' },
+    { input: '0', type: 'BOOLEAN', expected: 'FALSE', description: 'Booléen 0' },
+    
+    // Tests nombres
+    { input: '123', type: 'INTEGER', expected: '123', description: 'Entier' },
+    { input: '123.45', type: 'NUMERIC(12,2)', expected: '123.45', description: 'Décimal' },
+    { input: 'invalid', type: 'INTEGER', expected: 'NULL', description: 'Nombre invalide' }
+  ];
+  
+  let passed = 0;
+  let failed = 0;
+  
+  for (const testCase of testCases) {
+    const result = escapeSQLValue(testCase.input, testCase.type || 'TEXT');
+    const success = result === testCase.expected;
+    
+    if (success) {
+      console.log(`✅ ${testCase.description}: ${c('green', 'PASS')}`);
+      passed++;
+    } else {
+      console.log(`❌ ${testCase.description}: ${c('red', 'FAIL')}`);
+      console.log(`   Input:    ${c('yellow', JSON.stringify(testCase.input))}`);
+      console.log(`   Expected: ${c('green', testCase.expected)}`);
+      console.log(`   Got:      ${c('red', result)}`);
+      failed++;
+    }
+  }
+  
+  console.log(`\n📊 Résultats: ${c('green', passed)} passés, ${c('red', failed)} échoués`);
+  
+  if (failed === 0) {
+    console.log(`${c('green', '🎉 Tous les tests sont passés !')}`);
+  } else {
+    console.log(`${c('red', '⚠️ Certains tests ont échoué. Vérifiez la fonction.')}`);
+  }
+  
+  return failed === 0;
+}
+
+// ============================================
+// LOGGING / REPORT
+// ============================================
+
+const args = process.argv.slice(2);
+const DRY_RUN = args.includes('--dry-run');
+
+const OUTPUT_DIR = './output';
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+ensureDir(OUTPUT_DIR);
+
+const errorsLogPath = path.join(OUTPUT_DIR, 'errors.log');
+function logErrorLine(message) {
+  fs.appendFileSync(errorsLogPath, `[${new Date().toISOString()}] ${message}\n`);
+}
+
+const migrationReport = {
+  generatedAt: new Date().toISOString(),
+  importantDir: CONFIG.importantDir,
+  dryRun: DRY_RUN,
+  totals: {
+    databases: 0,
+    tables: 0,
+    rowsProcessed: 0,
+    uuidInvalid: 0,
+    specialChars: 0,
+    successes: 0,
+    failures: 0
+  },
+  tables: []
+};
+
+function generateUuidV4() {
+  const bytes = crypto.randomBytes(16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+  const hex = bytes.toString('hex');
+  return (
+    hex.slice(0, 8) + '-' +
+    hex.slice(8, 12) + '-' +
+    hex.slice(12, 16) + '-' +
+    hex.slice(16, 20) + '-' +
+    hex.slice(20)
+  );
 }
 
 /**
@@ -402,7 +551,7 @@ function generateSQLForDatabase(dbFolder, dbName) {
   
   if (!csvFile) {
     console.log(`  ⚠️  Aucun fichier CSV trouvé, skip`);
-    return '';
+    return { sql: '', tableReport: null };
   }
   
   const csvPath = path.join(dbFolder, csvFile);
@@ -413,7 +562,7 @@ function generateSQLForDatabase(dbFolder, dbName) {
   
   if (headers.length === 0 || rows.length === 0) {
     console.log(`  ⚠️  CSV vide, skip`);
-    return '';
+    return { sql: '', tableReport: null };
   }
   
   console.log(`  → ${headers.length} colonnes, ${rows.length} lignes`);
@@ -425,6 +574,9 @@ function generateSQLForDatabase(dbFolder, dbName) {
   // Détecter les types de colonnes
   const columns = {};
   const hasIdColumn = headers.some(h => sanitizeName(h) === 'id');
+  const idHeader = headers.find(h => sanitizeName(h) === 'id');
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  let needsOriginalIdColumn = false;
   
   for (const header of headers) {
     const cleanHeader = sanitizeName(header);
@@ -444,6 +596,28 @@ function generateSQLForDatabase(dbFolder, dbName) {
       sqlName: cleanHeader,
       type: majorityType
     };
+  }
+
+  // Scan des UUID invalides si une colonne Id existe
+  const tableErrors = [];
+  let invalidUuidCount = 0;
+  let specialCharsCount = 0;
+  if (hasIdColumn && idHeader) {
+    for (let i = 0; i < rows.length; i++) {
+      const rawId = (rows[i][idHeader] || '').trim();
+      if (rawId && !UUID_RE.test(rawId)) {
+        invalidUuidCount++;
+        needsOriginalIdColumn = true;
+        tableErrors.push({ rowIndex: i + 2, reason: 'invalid_uuid', value: rawId });
+      }
+      // détecter caractères spéciaux sur la ligne
+      for (const h of headers) {
+        const v = rows[i][h];
+        if (v && (v.includes("'") || v.includes('"') || v.includes('\n'))) {
+          specialCharsCount++;
+        }
+      }
+    }
   }
   
   // Générer le SQL
@@ -480,6 +654,10 @@ function generateSQLForDatabase(dbFolder, dbName) {
     }
     return `  ${col.sqlName} ${col.type}`;
   });
+  // Ajouter _original_id si nécessaire
+  if (needsOriginalIdColumn) {
+    columnDefs.push(`  _original_id TEXT`);
+  }
   sql += columnDefs.join(',\n');
   
   // Ajout des colonnes de métadonnées uniquement si pas d'Id Fibery
@@ -500,33 +678,82 @@ function generateSQLForDatabase(dbFolder, dbName) {
   
   // INSERT par batch
   console.log(`  → Génération des INSERT (batch size: ${CONFIG.batchSize})...`);
+
+  const tableReport = {
+    table: `${CONFIG.schema}.${tableName}`,
+    source: dbName,
+    rows: rows.length,
+    uuidInvalid: invalidUuidCount,
+    specialChars: specialCharsCount,
+    successes: 0, // évalué après génération
+    failures: 0,
+    errorLines: tableErrors
+  };
+
+  // Colonnes pour INSERT
+  const insertColumns = [...Object.values(columns).map(c => c.sqlName)];
+  if (needsOriginalIdColumn) insertColumns.push('_original_id');
   
   for (let i = 0; i < rows.length; i += CONFIG.batchSize) {
     const batch = rows.slice(i, i + CONFIG.batchSize);
-    
-    sql += `-- Batch ${Math.floor(i / CONFIG.batchSize) + 1}/${Math.ceil(rows.length / CONFIG.batchSize)}\n`;
-    sql += `INSERT INTO ${CONFIG.schema}.${tableName} (`;
-    
-    // Noms de colonnes
-    const colNames = Object.values(columns).map(c => c.sqlName);
-    sql += colNames.join(', ');
-    sql += `) VALUES\n`;
-    
-    // Valeurs
-    const valueLines = batch.map(row => {
-      const values = Object.entries(columns).map(([original, col]) => {
-        return escapeSQLValue(row[original], col.type);
-      });
-      return `  (${values.join(', ')})`;
-    });
-    
-    sql += valueLines.join(',\n');
-    sql += ';\n\n';
+    const batchIndex = Math.floor(i / CONFIG.batchSize) + 1;
+    const totalBatches = Math.ceil(rows.length / CONFIG.batchSize);
+
+    // Préparer les lignes de valeurs et gérer UUID invalides
+    const valueLines = [];
+    const perRowInserts = [];
+    for (const row of batch) {
+      try {
+        const values = [];
+        let originalIdValue = null;
+        for (const [original, col] of Object.entries(columns)) {
+          if (hasIdColumn && col.sqlName === 'id') {
+            const rawId = (row[original] || '').trim();
+            if (!rawId || !UUID_RE.test(rawId)) {
+              // remplacer par un UUID v4 et mémoriser l'original
+              const newId = generateUuidV4();
+              values.push(escapeSQLValue(newId, 'UUID'));
+              originalIdValue = rawId || null;
+              migrationReport.totals.uuidInvalid += 1;
+            } else {
+              values.push(escapeSQLValue(rawId, 'UUID'));
+            }
+          } else {
+            values.push(escapeSQLValue(row[original], col.type));
+          }
+        }
+        if (needsOriginalIdColumn) {
+          values.push(originalIdValue === null ? 'NULL' : escapeSQLValue(originalIdValue, 'TEXT'));
+        }
+        valueLines.push(`  (${values.join(', ')})`);
+        perRowInserts.push(`  BEGIN\n    INSERT INTO ${CONFIG.schema}.${tableName} (${insertColumns.join(', ')}) VALUES (${values.join(', ')});\n  EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Row failed: %', SQLERRM;\n  END;`);
+        migrationReport.totals.rowsProcessed += 1;
+      } catch (e) {
+        tableReport.failures += 1;
+        logErrorLine(`${dbName} row_error: ${e.message}`);
+      }
+    }
+
+    // Block avec retry: essayer le batch, sinon per-row
+    sql += `-- Batch ${batchIndex}/${totalBatches}\n`;
+    sql += `DO $$\nBEGIN\n`;
+    sql += `  INSERT INTO ${CONFIG.schema}.${tableName} (${insertColumns.join(', ')}) VALUES\n`;
+    sql += valueLines.join(',\n') + `;\n`;
+    sql += `EXCEPTION WHEN OTHERS THEN\n`;
+    sql += `  -- Retry ligne par ligne\n`;
+    sql += perRowInserts.join('\n') + '\n';
+    sql += `END$$;\n\n`;
   }
   
   console.log(`  ✅ ${rows.length} lignes générées`);
+  migrationReport.totals.tables += 1;
+  migrationReport.totals.specialChars += specialCharsCount;
+  // Succès estimés = lignes - échecs parsing
+  tableReport.successes = rows.length - tableReport.failures;
+  migrationReport.totals.successes += tableReport.successes;
+  migrationReport.tables.push(tableReport);
   
-  return sql;
+  return { sql, tableReport };
 }
 
 // ============================================
@@ -538,7 +765,7 @@ function main() {
   console.log('🚀 CSV TO SQL MIGRATOR - Fibery → Supabase');
   console.log('━'.repeat(80));
   console.log(`📂 Dossier source: ${CONFIG.importantDir}`);
-  console.log(`📄 Fichier SQL: ${CONFIG.outputSQL}`);
+  console.log(`📄 Fichier SQL: ${CONFIG.outputSQL}${DRY_RUN ? ' (dry-run)' : ''}`);
   console.log(`🗂️  Schéma PostgreSQL: ${CONFIG.schema}`);
   console.log('━'.repeat(80));
   
@@ -561,6 +788,7 @@ function main() {
   databases.forEach((db, idx) => {
     console.log(`  ${idx + 1}. ${db}`);
   });
+  migrationReport.totals.databases = databases.length;
   
   // Générer le header SQL
   let fullSQL = '';
@@ -578,7 +806,7 @@ function main() {
   // Traiter chaque base
   for (const db of databases) {
     const dbFolder = path.join(CONFIG.importantDir, db);
-    const sql = generateSQLForDatabase(dbFolder, db);
+    const { sql } = generateSQLForDatabase(dbFolder, db);
     fullSQL += sql;
   }
   
@@ -589,19 +817,31 @@ function main() {
   fullSQL += `RESET search_path;\n`;
   
   // Sauvegarder
-  fs.writeFileSync(CONFIG.outputSQL, fullSQL, 'utf8');
+  if (!DRY_RUN) {
+    fs.writeFileSync(CONFIG.outputSQL, fullSQL, 'utf8');
+  }
   
-  const fileSize = (fs.statSync(CONFIG.outputSQL).size / 1024).toFixed(1);
+  const fileSize = DRY_RUN ? '0.0' : (fs.statSync(CONFIG.outputSQL).size / 1024).toFixed(1);
+
+  // Écrire rapport JSON
+  const reportPath = path.join(OUTPUT_DIR, 'migration-report.json');
+  fs.writeFileSync(reportPath, JSON.stringify(migrationReport, null, 2), 'utf8');
   
   console.log('\n━'.repeat(80));
-  console.log('✅ MIGRATION SQL GÉNÉRÉE !');
+  console.log('✅ MIGRATION TERMINÉE !');
   console.log('━'.repeat(80));
   console.log(`📄 Fichier: ${CONFIG.outputSQL}`);
   console.log(`📊 Taille: ${fileSize} KB`);
+  console.log(`🧾 Rapport: ${path.join(OUTPUT_DIR, 'migration-report.json')}`);
+  console.log(`🪵 Log erreurs: ${errorsLogPath}`);
   console.log(`\n🚀 PROCHAINES ÉTAPES:`);
-  console.log(`  1. Ouvrez Supabase SQL Editor`);
-  console.log(`  2. Copiez-collez le contenu de ${CONFIG.outputSQL}`);
-  console.log(`  3. Cliquez "Run" pour exécuter`);
+  if (DRY_RUN) {
+    console.log(`  Dry-run: pas d'écriture SQL. Vérifiez le rapport puis relancez sans --dry-run.`);
+  } else {
+    console.log(`  1. Ouvrez Supabase SQL Editor`);
+    console.log(`  2. Copiez-collez le contenu de ${CONFIG.outputSQL}`);
+    console.log(`  3. Cliquez "Run" pour exécuter`);
+  }
   console.log('━'.repeat(80));
 }
 

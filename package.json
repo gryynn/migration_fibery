@@ -38,10 +38,10 @@
   },
   "homepage": "https://github.com/gryynn/migration_fibery#readme",
   "dependencies": {
+    "@supabase/supabase-js": "^2.77.0",
     "fs": "^0.0.1-security",
     "path": "^0.12.7"
   },
-  "devDependencies": {},
   "files": [
     "csv-to-sql-migrator.js",
     "create-relations.js",
